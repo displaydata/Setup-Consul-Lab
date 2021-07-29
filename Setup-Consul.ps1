@@ -1,11 +1,42 @@
+<#
+.SYNOPSIS
+    Downloads and runs Consul for Windows as a service
+.DESCRIPTION
+    Downloads Consul version (as specified by VersionNumber) or use binary (as specified by ConsulBinary path).
+    Creates and starts a Consul Service using parameters specified.
+.PARAMETER VersionNumber
+    Version of Consul to download 
+.PARAMETER ConsulBinary
+    Path to Consul Binary
+.PARAMETER ConsulAdvertise
+    Address Consul will be available for connections from other servers.
+.PARAMETER EventsServer
+    Set to $false if not running on Events Server, to stop Consul agent running in server mode.
+    By default it assumes this is run on the Events server and the Consul agent will run in server mode.
+.PARAMETER JoinAddress
+    If not running as a server, specify address of server agent to join (as specified in ConsulAdvertise address on the EventsServer).
+.PARAMETER InstallDirectory
+    Optionally specify install directory for Consul, otherwise defaults to C:/Consul.
+.PARAMETER InstallAsAccount
+    Optionally specify account to use to run service.
+.PARAMETER InstallAccountPassword
+    If running service using non-default account, specify password with this parameter.
+.EXAMPLE
+    PS> ./Setup-Consul.ps1 -VersionNumber 1.9.7 -ConsulAdvertise 192.168.0.1
+.LINK
+    https://github.com/displaydata/Setup-Consul-Lab
+#>
+
+#Requires -Version 5.0
+
 [CmdletBinding()]
 param(
-  [string]$ConsulBinary, # if you want to supply the Consul binary, where is it on the file system?
-  [string]$VersionNumber, # optionally download a Consul binary version from the Hashicorp site
-  [string]$InstallDirectory = "c:/Consul", 
-  [string]$ConsulAdvertise, 
+  [string]$VersionNumber,
+  [string]$ConsulBinary,
+  [Parameter(Mandatory=$true)][string]$ConsulAdvertise,
   [bool]$EventsServer = $true,
-  [string]$JoinAddress,  
+  [string]$JoinAddress,
+  [string]$InstallDirectory = "C:/Consul",
   [string]$InstallAsAccount,
   [string]$InstallAccountPassword
 )
@@ -16,8 +47,16 @@ if (!$ConsulBinary -and !$VersionNumber) {
   Write-Error "Please supply a Consul binary or a Version of Consul to download"
 }
 
+if ($ConsulBinary -and $VersionNumber) {
+  Write-Error "Please supply either a Consul binary or a Version of Consul to download"
+}
+
 if (!$EventsServer -and !$JoinAddress) {
   Write-Error "Please supply a join address for non Events server"
+}
+
+if ($InstallAsAccount -and !$InstallAccountPassword) {
+  Write-Error "Please supply InstallAccountPassword when using InstallAsAccount"
 }
 
 $ConsulData = "$InstallDirectory/data"
@@ -72,3 +111,4 @@ else {
 
 Start-Service -Name "ConsulService"
 Get-Service "ConsulService"
+
