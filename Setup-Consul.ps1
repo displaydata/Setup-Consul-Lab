@@ -4,6 +4,7 @@
 .DESCRIPTION
     Downloads Consul version (as specified by VersionNumber) or use binary (as specified by ConsulBinary path).
     Creates and starts a Consul Service using parameters specified.
+    IMPORTANT: This script must be run as Administrator
 .PARAMETER VersionNumber
     Version of Consul to download 
 .PARAMETER ConsulBinary
@@ -89,7 +90,7 @@ else {
 }
 
 $ConsulBinaryPath=Join-Path $ConsulInstall "consul.exe"
-$binPathWithArgs = "$ConsulBinaryPath agent -ui -data-dir $ConsulData -config-dir $ConsulConfig -log-file $ConsulLogs -log-level DEBUG -bind 0.0.0.0 -advertise $ConsulAdvertise"
+$binPathWithArgs = "$ConsulBinaryPath agent -ui -data-dir $ConsulData -config-dir $ConsulConfig -log-file $ConsulLogs -log-level DEBUG -bind 0.0.0.0 -advertise $ConsulAdvertise -hcl `"limits {http_max_conns_per_client=-1}`""
 
 if ($EventsServer) {
   $binPathWithArgs += " -server -bootstrap-expect=1"
@@ -111,4 +112,3 @@ else {
 
 Start-Service -Name "ConsulService"
 Get-Service "ConsulService"
-
