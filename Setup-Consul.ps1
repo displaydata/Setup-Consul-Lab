@@ -2,13 +2,9 @@
 .SYNOPSIS
     Downloads and runs Consul for Windows as a service
 .DESCRIPTION
-    Downloads Consul version (as specified by VersionNumber) or use binary (as specified by ConsulBinary path).
+    Downloads Consul version.
     Creates and starts a Consul Service using parameters specified.
     IMPORTANT: This script must be run as Administrator
-.PARAMETER VersionNumber
-    Version of Consul to download 
-.PARAMETER ConsulBinary
-    Path to Consul Binary
 .PARAMETER ConsulAdvertise
     Address Consul will be available for connections from other servers.
 .PARAMETER EventsServer
@@ -22,8 +18,10 @@
     Optionally specify account to use to run service.
 .PARAMETER InstallAccountPassword
     If running service using non-default account, specify password with this parameter.
+.PARAMETER NumberOfLogFilesToKeep
+    Number of old log files to keep before deleting them. Default is 14.
 .EXAMPLE
-    PS> ./Setup-Consul.ps1 -VersionNumber 1.9.7 -ConsulAdvertise 192.168.0.1
+    PS> ./Setup-Consul.ps1 -ConsulAdvertise 192.168.0.1
 .LINK
     https://github.com/displaydata/Setup-Consul-Lab
 #>
@@ -32,17 +30,19 @@
 
 [CmdletBinding()]
 param(
-  [string]$VersionNumber,
-  [string]$ConsulBinary,
   [Parameter(Mandatory=$true)][string]$ConsulAdvertise,
   [bool]$EventsServer = $true,
   [string]$JoinAddress,
   [string]$InstallDirectory = "C:/Consul",
   [string]$InstallAsAccount,
-  [string]$InstallAccountPassword
+  [string]$InstallAccountPassword,
+  [int]$NumberOfLogFilesToKeep  = 10
 )
 
 $ErrorActionPreference = "Stop"
+
+# Tested with 1.19.2 and later versions are known to have issues
+$VersionNumber = "1.19.2"
 
 if (!$ConsulBinary -and !$VersionNumber) {
   Write-Error "Please supply a Consul binary or a Version of Consul to download"
@@ -62,7 +62,7 @@ if ($InstallAsAccount -and !$InstallAccountPassword) {
 
 $ConsulData = "$InstallDirectory/data"
 $ConsulInstall = "$InstallDirectory/install"
-$ConsulLogs = "$InstallDirectory/logs/"
+$ConsulLogs = "$InstallDirectory/logs"
 $ConsulConfig = "$InstallDirectory/config"
 
 New-Item -Path $InstallDirectory   -ItemType Directory -ErrorAction "Ignore"
@@ -71,26 +71,43 @@ New-Item -Path $ConsulInstall      -ItemType Directory -ErrorAction "Ignore"
 New-Item -Path $ConsulLogs         -ItemType Directory -ErrorAction "Ignore"
 New-Item -Path $ConsulConfig       -ItemType Directory -ErrorAction "Ignore"
 
-if ($ConsulBinary) {
-  Copy-Item $ConsulBinary $ConsulInstall
+$configFile = @"
+data_dir = "$(($ConsulData.Replace('/','\')).Replace('\','\\'))"
+log_level = "info"
+log_file = "$(($ConsulLogs.Replace('/','\')).Replace('\','\\'))\\consul.log"
+advertise_addr = "$ConsulAdvertise"
+limits {
+  http_max_conns_per_client=-1
 }
-else {
-  #Enable TLS
-  [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol `
-    -bor [Net.SecurityProtocolType]::Tls11 `
-    -bor [Net.SecurityProtocolType]::Tls12
+log_rotate_max_files=10
+ui_config {
+  enabled = true
+}
+"@
 
-  $zipFileName = "consul_$($VersionNumber)_windows_amd64.zip"
-  $url = "https://releases.hashicorp.com/consul/$VersionNumber/$ZipFileName"
-  
-  $wc = New-Object System.Net.WebClient
-  $wc.DownloadFile($url, "$ConsulInstall/$ZipFileName") 
-  
-  Expand-Archive -Confirm:$false -Force:$true "$ConsulInstall/$zipFileName" "$ConsulInstall"
+$configFilePath = "$ConsulConfig/config.hcl"
+if (Test-Path -Path $configFilePath) {
+  Write-Error "Config file already exists"
 }
+
+New-Item -Path $configFilePath -ItemType File -Force
+Set-Content -Path $configFilePath -Value $configFile
+
+#Enable TLS
+[Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol `
+  -bor [Net.SecurityProtocolType]::Tls11 `
+  -bor [Net.SecurityProtocolType]::Tls12
+
+$zipFileName = "consul_$($VersionNumber)_windows_amd64.zip"
+$url = "https://releases.hashicorp.com/consul/$VersionNumber/$ZipFileName"
+
+$wc = New-Object System.Net.WebClient
+$wc.DownloadFile($url, "$ConsulInstall/$ZipFileName") 
+
+Expand-Archive -Confirm:$false -Force:$true "$ConsulInstall/$zipFileName" "$ConsulInstall"
 
 $ConsulBinaryPath=Join-Path $ConsulInstall "consul.exe"
-$binPathWithArgs = "$ConsulBinaryPath agent -ui -data-dir $ConsulData -config-dir $ConsulConfig -log-file $ConsulLogs -log-level DEBUG -bind 0.0.0.0 -advertise $ConsulAdvertise -hcl `"limits {http_max_conns_per_client=-1}`""
+$binPathWithArgs = "$ConsulBinaryPath agent -config-dir $ConsulConfig -bind 0.0.0.0"
 
 if ($EventsServer) {
   $binPathWithArgs += " -server -bootstrap-expect=1"
