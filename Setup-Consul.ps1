@@ -60,10 +60,10 @@ if ($InstallAsAccount -and !$InstallAccountPassword) {
   Write-Error "Please supply InstallAccountPassword when using InstallAsAccount"
 }
 
-$ConsulData = "$InstallDirectory/data"
-$ConsulInstall = "$InstallDirectory/install"
-$ConsulLogs = "$InstallDirectory/logs"
-$ConsulConfig = "$InstallDirectory/config"
+$ConsulData = Join-Path -Path $InstallDirectory -ChildPath "data"
+$ConsulInstall = Join-Path -Path $InstallDirectory -ChildPath "install"
+$ConsulLogs = Join-Path -Path $InstallDirectory -ChildPath "logs"
+$ConsulConfig = Join-Path -Path $InstallDirectory -ChildPath "config"
 
 New-Item -Path $InstallDirectory   -ItemType Directory -ErrorAction "Ignore"
 New-Item -Path $ConsulData         -ItemType Directory -ErrorAction "Ignore"
@@ -72,9 +72,9 @@ New-Item -Path $ConsulLogs         -ItemType Directory -ErrorAction "Ignore"
 New-Item -Path $ConsulConfig       -ItemType Directory -ErrorAction "Ignore"
 
 $configFile = @"
-data_dir = "$(($ConsulData.Replace('/','\')).Replace('\','\\'))"
+data_dir = $(ConvertTo-Json $ConsulData)
 log_level = "info"
-log_file = "$(($ConsulLogs.Replace('/','\')).Replace('\','\\'))\\consul.log"
+log_file = $(ConvertTo-Json (Join-Path -Path $ConsulLogs -ChildPath "consul.log"))
 advertise_addr = "$ConsulAdvertise"
 limits {
   http_max_conns_per_client=-1
@@ -85,7 +85,7 @@ ui_config {
 }
 "@
 
-$configFilePath = "$ConsulConfig/config.hcl"
+$configFilePath = Join-Path -Path $ConsulConfig -ChildPath "config.hcl"
 if (Test-Path -Path $configFilePath) {
   Write-Error "Config file already exists"
 }
