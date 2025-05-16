@@ -5,6 +5,8 @@
     Downloads Consul version.
     Creates and starts a Consul Service using parameters specified.
     IMPORTANT: This script must be run as Administrator
+.PARAMETER ConsulBinary
+    Path to Consul Binary
 .PARAMETER ConsulAdvertise
     Address Consul will be available for connections from other servers.
 .PARAMETER EventsServer
@@ -30,6 +32,7 @@
 
 [CmdletBinding()]
 param(
+  [string]$ConsulBinary,
   [Parameter(Mandatory=$true)][string]$ConsulAdvertise,
   [bool]$EventsServer = $true,
   [string]$JoinAddress,
@@ -40,17 +43,10 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
+Set-StrictMode -Version Latest
 
 # Tested with 1.19.2 and later versions are known to have issues
 $VersionNumber = "1.19.2"
-
-if (!$ConsulBinary -and !$VersionNumber) {
-  Write-Error "Please supply a Consul binary or a Version of Consul to download"
-}
-
-if ($ConsulBinary -and $VersionNumber) {
-  Write-Error "Please supply either a Consul binary or a Version of Consul to download"
-}
 
 if (!$EventsServer -and !$JoinAddress) {
   Write-Error "Please supply a join address for non Events server"
@@ -93,18 +89,22 @@ if (Test-Path -Path $configFilePath) {
 New-Item -Path $configFilePath -ItemType File -Force
 Set-Content -Path $configFilePath -Value $configFile
 
-#Enable TLS
-[Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol `
-  -bor [Net.SecurityProtocolType]::Tls11 `
-  -bor [Net.SecurityProtocolType]::Tls12
+if ($ConsulBinary) {
+  Copy-Item $ConsulBinary $ConsulInstall
+} else {
+  #Enable TLS
+  [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol `
+    -bor [Net.SecurityProtocolType]::Tls11 `
+    -bor [Net.SecurityProtocolType]::Tls12
 
-$zipFileName = "consul_$($VersionNumber)_windows_amd64.zip"
-$url = "https://releases.hashicorp.com/consul/$VersionNumber/$ZipFileName"
+  $zipFileName = "consul_$($VersionNumber)_windows_amd64.zip"
+  $url = "https://releases.hashicorp.com/consul/$VersionNumber/$ZipFileName"
 
-$wc = New-Object System.Net.WebClient
-$wc.DownloadFile($url, "$ConsulInstall/$ZipFileName") 
+  $wc = New-Object System.Net.WebClient
+  $wc.DownloadFile($url, "$ConsulInstall/$ZipFileName")
 
-Expand-Archive -Confirm:$false -Force:$true "$ConsulInstall/$zipFileName" "$ConsulInstall"
+  Expand-Archive -Confirm:$false -Force:$true "$ConsulInstall/$zipFileName" "$ConsulInstall"
+}
 
 $ConsulBinaryPath=Join-Path $ConsulInstall "consul.exe"
 $binPathWithArgs = "$ConsulBinaryPath agent -config-dir $ConsulConfig -bind 0.0.0.0"
@@ -115,7 +115,7 @@ if ($EventsServer) {
   $binPathWithArgs += " -join $JoinAddress"
 }
 
-Write-Host "\nCreating Consul Service with command line $binPathWithArgs\n"
+Write-Host "Creating Consul Service with command line $binPathWithArgs"
 
 if (!$InstallAsAccount) {
     New-Service -Name "ConsulService" -Description "Consul Service" -BinaryPathName $binPathWithArgs -StartupType Automatic
