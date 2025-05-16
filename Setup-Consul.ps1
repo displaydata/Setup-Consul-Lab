@@ -89,6 +89,15 @@ if (Test-Path -Path $configFilePath) {
 New-Item -Path $configFilePath -ItemType File -Force
 Set-Content -Path $configFilePath -Value $configFile
 
+$consulServiceName = 'ConsulService'
+$existingService = Get-Service -Name $consulServiceName -ErrorAction Ignore
+if ($existingService) {
+  Write-Host "Removing existing Consul service"
+  $existingService | Stop-Service
+  sc.exe delete $consulServiceName
+  if ($LASTEXITCODE) { Write-Error "Failed to remove service: $consulServiceName" }
+}
+
 if ($ConsulBinary) {
   Copy-Item $ConsulBinary $ConsulInstall
 } else {
